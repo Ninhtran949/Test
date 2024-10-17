@@ -29,6 +29,7 @@ import androidx.annotation.NonNull;
 import androidx.fragment.app.Fragment;
 import androidx.viewpager2.widget.ViewPager2;
 
+import com.example.Sachpee.Activity.Callback.UpdateProductCallback;
 import com.example.Sachpee.Adapter.ProductAdapter_tabLayout;
 import com.example.Sachpee.Model.Product;
 import com.example.Sachpee.R;
@@ -39,7 +40,7 @@ import com.google.android.material.floatingactionbutton.FloatingActionButton;
 import com.google.android.material.tabs.TabLayout;
 import com.google.android.material.tabs.TabLayoutMediator;
 import com.google.android.material.textfield.TextInputLayout;
-  
+
 import com.gun0912.tedpermission.PermissionListener;
 import com.gun0912.tedpermission.normal.TedPermission;
 
@@ -104,14 +105,16 @@ public class ProductFragment extends Fragment {
                         break;
                     case 3:tab.setText("Giáo dục ");
                         break;
-                    case 4: tab.setText("Thiếu nhi");
+
+                    case 4: tab.setText("Thieu nhi");
                         break;
-                    case 5: tab.setText("Hồi ký");
+                    case 5: tab.setText("Hồi Ký");
                         break;
-                    case 6:tab.setText("Giáo khoa");
+                    case 6:tab.setText("Giáo Khoa");
                         break;
-                    case 7:tab.setText("Ngoại ngữ ");
+                    case 7:tab.setText("Ngoai ngu ");
                         break;
+
                 }
             }
         }).attach();
@@ -119,9 +122,68 @@ public class ProductFragment extends Fragment {
     public void initUI(){
         getAllProducts();
         fab_addProduct = binding.fabAddProductFragment;
-
-
     }
+
+    public void getAllProducts() {
+        ApiService apiService = ApiClient.getRetrofitInstance().create(ApiService.class);
+
+        Call<List<Product>> call = apiService.getAllProducts();
+
+        call.enqueue(new Callback<List<Product>>() {
+            @Override
+            public void onResponse(Call<List<Product>> call, Response<List<Product>> response) {
+                if (response.isSuccessful() && response.body() != null) {
+                    listProduct.clear();
+                    listProduct.addAll(response.body());
+                    adapter_tabLayout.notifyDataSetChanged();  // Thông báo adapter cập nhật giao diện
+                } else {
+                    Log.e("ProductFragment", "Lỗi khi lấy dữ liệu sản phẩm: Không có dữ liệu hợp lệ.");
+                }
+            }
+
+            @Override
+            public void onFailure(Call<List<Product>> call, Throwable t) {
+                Log.e("ProductFragment", "Lỗi khi truy vấn dữ liệu sản phẩm: " + t.getMessage());
+            }
+        });
+    }
+
+
+    public void updateProduct(Product product, UpdateProductCallback callback) {
+        ApiService apiService = ApiClient.getRetrofitInstance().create(ApiService.class);
+        Call<Void> call = apiService.updateProduct(product.getCodeProduct(), product);
+
+        call.enqueue(new Callback<Void>() {
+            @Override
+            public void onResponse(Call<Void> call, Response<Void> response) {
+                if (response.isSuccessful()) {
+                    Log.d("ProductFragment", "Sản phẩm đã được cập nhật thành công: " + product.getNameProduct());
+
+                    // Gọi callback sau khi cập nhật thành công
+                    try {
+                        if (callback != null) {
+                            getActivity().runOnUiThread(() -> {
+                                callback.onProductUpdated(); // Gọi callback trên UI thread
+                            });
+                        }
+                    }
+                    catch (Exception e) {
+                        Log.e("ProductFragment", "Lỗi: " + e.getMessage());
+                    }
+                } else {
+                    Log.e("ProductFragment", "Lỗi khi cập nhật sản phẩm: Phản hồi không thành công");
+                }
+            }
+
+            @Override
+            public void onFailure(Call<Void> call, Throwable t) {
+                Log.e("ProductFragment", "Lỗi khi cập nhật sản phẩm: " + t.getMessage());
+            }
+        });
+    }
+
+
+
 
     public void dialogProduct(Product product,int type,Context context) {
         sharedPreferences = context.getSharedPreferences("My_User",Context.MODE_PRIVATE);
@@ -142,7 +204,21 @@ public class ProductFragment extends Fragment {
             });
             btn_addBook.setOnClickListener(view1 -> {
                 getData(context);
-                validate(0);
+                if (validate(1) == 1) {
+                    product.setNameProduct(nameProduct);
+                    product.setPriceProduct(Integer.parseInt(priceProduct));
+                    product.setCodeCategory(codeCategory);
+
+                    // Gọi updateProduct và truyền callback
+                    updateProduct(product, new UpdateProductCallback() {
+                        @Override
+                        public void onProductUpdated() {
+                            // Sau khi cập nhật thành công, gọi lại getAllProducts để lấy dữ liệu mới nhất
+                            getAllProducts();
+                        }
+                    });
+                }
+                alertDialog.dismiss();
             });
             btn_cancelBook.setOnClickListener(view1 -> {
                 alertDialog.dismiss();
@@ -159,7 +235,18 @@ public class ProductFragment extends Fragment {
                     product.setNameProduct(nameProduct);
                     product.setPriceProduct(Integer.parseInt(priceProduct));
                     product.setCodeCategory(codeCategory);
-                    updateProduct(product);
+                    try {
+                        updateProduct(product, new UpdateProductCallback() {
+                            @Override
+                            public void onProductUpdated() {
+                                // Sau khi cập nhật thành công, gọi lại API để lấy dữ liệu mới nhất
+                                getAllProducts();
+                            }
+                        });
+                    } catch (Exception e) {
+                        Log.e("ProductFragment", "Lỗi khi cập nhật sản phẩm: " + e.getMessage());
+                    }
+
                 }
                 alertDialog.dismiss();
             });
@@ -272,33 +359,7 @@ public class ProductFragment extends Fragment {
 
     }
 
-    public void getAllProducts() {
-        ApiService apiService = ApiClient.getRetrofitInstance().create(ApiService.class);
 
-        Call<List<Product>> call = apiService.getAllProducts();
-
-        call.enqueue(new Callback<List<Product>>() {
-            @Override
-            public void onResponse(Call<List<Product>> call, Response<List<Product>> response) {
-                if (response.isSuccessful() && response.body() != null) {
-                    listProduct.clear();
-                    listProduct.addAll(response.body());
-
-                    // Log thành công khi lấy dữ liệu
-                    Log.d("ProductFragment", "Dữ liệu sản phẩm đã được lấy thành công. Số lượng sản phẩm: " + listProduct.size());
-                } else {
-                    // Log lỗi khi không có dữ liệu hợp lệ
-                    Log.e("ProductFragment", "Lỗi khi lấy dữ liệu sản phẩm: Không có dữ liệu hợp lệ.");
-                }
-            }
-
-            @Override
-            public void onFailure(Call<List<Product>> call, Throwable t) {
-                // Log lỗi khi truy vấn thất bại
-                Log.e("ProductFragment", "Lỗi khi truy vấn dữ liệu sản phẩm: " + t.getMessage());
-            }
-        });
-    }
 
 
     public void addProduct(Product product) {
@@ -349,28 +410,7 @@ public class ProductFragment extends Fragment {
     }
 
 
-    public void updateProduct(Product product) {
-        ApiService apiService = ApiClient.getRetrofitInstance().create(ApiService.class);
 
-        // Gửi yêu cầu cập nhật sản phẩm qua API
-        Call<Void> call = apiService.updateProduct(product.getCodeProduct(), product);
-
-        call.enqueue(new Callback<Void>() {
-            @Override
-            public void onResponse(Call<Void> call, Response<Void> response) {
-                if (response.isSuccessful()) {
-                    Log.d("ProductFragment", "Sản phẩm đã được cập nhật thành công: " + product.getNameProduct());
-                } else {
-                    Log.e("ProductFragment", "Lỗi khi cập nhật sản phẩm: Phản hồi không thành công");
-                }
-            }
-
-            @Override
-            public void onFailure(Call<Void> call, Throwable t) {
-                Log.e("ProductFragment", "Lỗi khi cập nhật sản phẩm: " + t.getMessage());
-            }
-        });
-    }
 
 
     public void deleteProduct(Product product) {
